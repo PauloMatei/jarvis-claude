@@ -1,0 +1,8 @@
+.env
+persona.md
+.estado/
+amostras-de-voz/
+__pycache__/
+.DS_Store
+cerebro/
+persona-*.md

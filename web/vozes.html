@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JARVIS · Vozes</title>
+<style>
+  body { background: #05090f; color: #cfe8ff; font-family: system-ui, sans-serif; margin: 0; padding: 32px; }
+  h1 { font-weight: 300; letter-spacing: .2em; color: #4fc3ff; }
+  h2 { font-weight: 400; color: #8fd4ff; margin-top: 32px; }
+  .voz { display: flex; align-items: center; gap: 12px; padding: 12px 16px; margin: 8px 0; max-width: 640px;
+         border: 1px solid #12324a; border-radius: 8px; background: #0a1520; }
+  .voz.ativa { border-color: #4fc3ff; box-shadow: 0 0 12px #4fc3ff55; }
+  .voz .info { flex: 1; }
+  .voz small { color: #6d8aa3; display: block; }
+  button { background: #0e2a40; color: #cfe8ff; border: 1px solid #1f5a80; border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+  button:hover { background: #17415e; }
+  button:disabled { opacity: .5; cursor: default; }
+  label { display: block; max-width: 640px; margin: 14px 0; }
+  input[type=range] { width: 100%; }
+  a { color: #4fc3ff; }
+</style>
+</head>
+<body>
+<h1>VOZES DO JARVIS</h1>
+<p>Vozes locais e gratuitas: rodam no seu computador, sem chave e sem internet depois de baixadas. <a href="/">Voltar</a></p>
+
+<h2>Ajuste</h2>
+<label>Velocidade: <b id="vVel"></b><input id="velocidade" type="range" min="0.7" max="1.2" step="0.05"></label>
+<label>Tom (menor = mais grave, estilo Jarvis): <b id="vTom"></b><input id="tom" type="range" min="0.8" max="1.1" step="0.02"></label>
+
+<h2>Instaladas</h2>
+<div id="instaladas"></div>
+
+<h2>Para baixar</h2>
+<div id="catalogo"></div>
+
+<script>
+  let config = {};
+  let audio = null;
+
+  async function json(url, corpo) {
+    const r = await fetch(url, corpo ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo) } : {});
+    if (!r.ok) throw new Error(r.status);
+    return r.json();
+  }
+
+  function linha(v, botoes) {
+    const d = document.createElement("div");
+    d.className = "voz" + (v.id === config.voz ? " ativa" : "");
+    const info = document.createElement("div");
+    info.className = "info";
+    info.textContent = v.nome;
+    const sub = document.createElement("small");
+    sub.textContent = v.descricao;
+    info.appendChild(sub);
+    d.appendChild(info);
+    botoes.forEach(([texto, acao]) => {
+      const b = document.createElement("button");
+      b.textContent = texto;
+      b.onclick = () => acao(b);
+      d.appendChild(b);
+    });
+    return d;
+  }
+
+  function ouvir(id) {
+    if (audio) audio.pause();
+    audio = new Audio("/api/amostra/" + id + "?t=" + Date.now());
+    audio.play();
+  }
+
+  async function desenhar() {
+    config = await json("/api/config");
+    const catalogo = await json("/api/catalogo");
+    document.getElementById("velocidade").value = config.velocidade;
+    document.getElementById("tom").value = config.tom;
+    document.getElementById("vVel").textContent = config.velocidade;
+    document.getElementById("vTom").textContent = config.tom;
+
+    const inst = document.getElementById("instaladas");
+    inst.innerHTML = "";
+    config.vozes.forEach((v) => inst.appendChild(linha(v, [
+      ["Ouvir", () => ouvir(v.id)],
+      ["Usar", async () => { await json("/api/config", { voz: v.id }); desenhar(); }],
+    ])));
+
+    const cat = document.getElementById("catalogo");
+    cat.innerHTML = "";
+    catalogo.filter((v) => !v.instalada).forEach((v) => cat.appendChild(linha(v, [
+      ["Baixar", async (b) => {
+        b.disabled = true;
+        b.textContent = "Baixando...";
+        try { await json("/api/baixar-voz", { id: v.id }); desenhar(); }
+        catch (e) { b.disabled = false; b.textContent = "Falhou, tentar de novo"; }
+      }],
+    ])));
+    if (!cat.children.length) cat.textContent = "Todas as vozes do catálogo já estão instaladas.";
+  }
+
+  ["velocidade", "tom"].forEach((campo) => {
+    document.getElementById(campo).addEventListener("change", async (e) => {
+      await json("/api/config", { [campo]: parseFloat(e.target.value) });
+      desenhar();
+    });
+  });
+
+  desenhar();
+</script>
+</body>
+</html>
